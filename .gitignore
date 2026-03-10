@@ -1,0 +1,31 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Claude Code internals
+.claude/
+
+# SKiDL generated files
+board/*.log
+board/*.erc
+board/*_sklib.py
+
+# KiCad generated outputs
+board/*.net
+board/*.svg
+board/*.png
+board/erc.json
+
+# KiCad cache and backups
+board/**/*-backups/
+board/**/*.kicad_sch-bak
+board/**/*.kicad_pcb-bak
+board/**/_autosave-*
+board/**/fp-info-cache

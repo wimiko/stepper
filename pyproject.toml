@@ -1,0 +1,8 @@
+[project]
+name = "esp-stepper"
+version = "0.1.0"
+description = "WiFi stepper motor controller — Python client for ESP32/TMC2209 over MQTT"
+requires-python = ">=3.14"
+dependencies = [
+    "skidl>=2.2.1",
+]
