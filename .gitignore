@@ -29,3 +29,4 @@ board/**/*.kicad_sch-bak
 board/**/*.kicad_pcb-bak
 board/**/_autosave-*
 board/**/fp-info-cache
+.vscode/settings.json
