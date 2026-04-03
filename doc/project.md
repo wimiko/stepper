@@ -5,6 +5,68 @@ A stepper motor driver controlled over WiFi. Commands are sent to an ESP32 which
 
 ---
 
+## ESP32-C3 Board (ABRobot 0.42" OLED)
+
+### Overview
+| Property | Value |
+|----------|-------|
+| Board | ABRobot ESP32-C3 with 0.42" OLED |
+| Dimensions | 24.8mm × 20.45mm, 2.54mm pitch |
+| Supply voltage | 3.3V–6V |
+| Flash | 4MB |
+| Connectivity | WiFi 802.11b/g/n (2.4GHz), Bluetooth 5.0 |
+| Display | 0.42" OLED, SSD1306 controller, 72×40 effective pixels (128×64 buffer) |
+| I2C address | 0x3C |
+| USB | Native USB CDC (shows up as `/dev/ttyACM0` on Linux) |
+
+### Pinout
+| Function | GPIO | Notes |
+|----------|------|-------|
+| I2C SDA (OLED) | 5 | Shared with external I2C devices |
+| I2C SCL (OLED) | 6 | Shared with external I2C devices |
+| Blue LED | 8 | Active LOW (LOW = on) |
+| BOOT button | 9 | Pull-up to 3.3V |
+| TX (UART0) | 21 | |
+| RX (UART0) | 20 | |
+| USB D−/D+ | 18/19 | Reserved — do not use |
+| ADC capable | 0–5 | |
+| SPI/GPIO | 10–17 | Some reserved for flash |
+
+### Display
+The SSD1306 has a 128×64 buffer but only a 72×40 pixel area is physically visible. In ESPHome use `model: "SSD1306 72x40"` — this handles the offset automatically.
+
+The display on this board is **not interchangeable** with other 0.42" SSD1306 displays; the pixel mapping differs.
+
+### Flashing via USB
+
+**First-time flash (or if device is unresponsive):**
+1. Hold the `BOOT` button
+2. Press and release `RESET` (or plug in USB while holding `BOOT`)
+3. Release `BOOT` — board is now in bootloader mode
+4. Run: `esphome run esp32-c3.yaml --device /dev/ttyACM0`
+
+**Linux permissions** — add yourself to the `dialout` group (one-time):
+```bash
+sudo usermod -a -G dialout $USER
+# log out and back in
+```
+
+**Important:** Use a data-capable USB cable. Many cables are charge-only and the device will not appear in `dmesg` or `lsusb`.
+
+After a successful first flash, subsequent OTA updates work over WiFi.
+
+### ESPHome Notes
+- Logger via USB: add `hardware_uart: USB_SERIAL_JTAG` under `logger:`
+- Board identifier: `esp32-c3-devkitm-1`
+- Framework: `arduino`
+
+### Resources
+- Blog with detailed setup: [emalliab.wordpress.com — ESP32-C3 0.42 OLED](https://emalliab.wordpress.com/2025/02/12/esp32-c3-0-42-oled/)
+- Schematic: [github.com/zhuhai-esp/ESP32-C3-ABrobot-OLED](https://github.com/zhuhai-esp/ESP32-C3-ABrobot-OLED)
+- Fritzing part: [Fritzing forum](https://forum.fritzing.org/t/esp32-c3-oled-0-42-mini-board-part/25830)
+
+---
+
 ## Components
 
 ### Core Electronics

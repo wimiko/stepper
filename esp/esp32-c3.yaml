@@ -28,7 +28,7 @@ ota:
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
-  
+
   # Enable fallback hotspot in case wifi connection fails
   ap:
     ssid: "ESP32-C3-Stepper"
@@ -52,8 +52,15 @@ display:
     address: 0x3C
     lambda: |-
       it.printf(0, 0, id(font_small), "Stepper");
-      it.printf(0, 12, id(font_small), "%s", id(wifi_status).state ? "WiFi OK" : "No WiFi");
-      it.printf(0, 24, id(font_small), "Idle");
+      it.printf(0, 12, id(font_small), "%s", id(display_text).c_str());
+      it.printf(0, 24, id(font_small), "%s", id(wifi_status).state ? "WiFi" : "No WiFi");
+
+# Global variable to hold the MQTT display message
+globals:
+  - id: display_text
+    type: std::string
+    restore_value: no
+    initial_value: '""'
 
 # Font for small display
 font:
@@ -74,14 +81,14 @@ binary_sensor:
     id: wifi_status
 
 # MQTT client configuration
-#mqtt:
-#  broker: !secret mqtt_broker
-#  port: 1883
-#  username: !secret mqtt_username
-#  password: !secret mqtt_password
-#  discovery: true
-#  discovery_prefix: homeassistant
-#  topic_prefix: stepper
+mqtt:
+  broker: !secret mqtt_broker
+  port: 1883
+  on_message:
+    - topic: stepper/display
+      then:
+        - lambda: |-
+            id(display_text) = x;
 
 # TMC2209 Stepper configuration (to be configured based on wiring)
 # Uncomment and configure once hardware is connected
