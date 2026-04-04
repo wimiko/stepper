@@ -290,7 +290,7 @@ def main():
         return JSONResponse({
             "name": "Fence Controller",
             "short_name": "Fence",
-            "display": "fullscreen",
+            "display": "standalone",
             "background_color": "#111",
             "theme_color": "#111",
             "start_url": "/",
