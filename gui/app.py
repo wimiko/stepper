@@ -281,6 +281,8 @@ def main():
         native=True,
         window_size=(800, 480),
         fullscreen=True,
+        host="0.0.0.0",
+        port=8080,
     )
 
 
