@@ -274,6 +274,29 @@ class FenceApp:
 def main():
     start_mqtt()
     FenceApp().build()
+
+    # PWA meta tags — lets phones install via "Add to Home Screen" for fullscreen
+    ui.add_head_html('''
+        <meta name="mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+        <meta name="apple-mobile-web-app-title" content="Fence">
+        <link rel="manifest" href="/manifest.json">
+    ''')
+
+    @app.get("/manifest.json")
+    async def manifest():
+        from fastapi.responses import JSONResponse
+        return JSONResponse({
+            "name": "Fence Controller",
+            "short_name": "Fence",
+            "display": "fullscreen",
+            "background_color": "#111",
+            "theme_color": "#111",
+            "start_url": "/",
+            "icons": [],
+        })
+
     ui.run(
         title="Fence Controller",
         dark=True,
