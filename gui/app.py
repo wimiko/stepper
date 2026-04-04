@@ -211,47 +211,47 @@ class FenceApp:
             tab_pos = ui.tab("Position", icon="straighten")
 
         with ui.tab_panels(tabs, value=tab_pos).classes("w-full grow bg-grey-10"):
-            with ui.tab_panel(tab_pos).classes("p-3"):
+            with ui.tab_panel(tab_pos).classes("p-2"):
                 with ui.row().classes("w-full gap-4 items-start"):
 
                     # ── Left column: entry display + numpad ────────────────
-                    with ui.column().classes("gap-2 shrink-0"):
+                    with ui.column().classes("gap-1 shrink-0"):
 
                         # Entry display
                         with ui.row().classes(
-                            "items-baseline gap-1 bg-grey-9 rounded px-3 py-1 w-full"
+                            "items-baseline gap-1 bg-grey-9 rounded px-3 py-0 w-full"
                         ):
                             self.display_lbl = ui.label("0.00").classes(
-                                "font-mono text-5xl text-white grow text-right"
+                                "font-mono text-4xl text-white grow text-right"
                             )
-                            ui.label("mm").classes("text-grey-5 text-xl self-end mb-1")
+                            ui.label("mm").classes("text-grey-5 text-lg self-end mb-1")
 
-                        # Digit grid  (adjust h-* / w-* to fit your touchscreen)
+                        # Digit grid
                         rows = [["7","8","9"],["4","5","6"],["1","2","3"],[".","0","←"]]
                         for row_keys in rows:
-                            with ui.row().classes("gap-2"):
+                            with ui.row().classes("gap-1"):
                                 for k in row_keys:
                                     (ui.button(k, on_click=lambda _k=k: self.press(_k))
-                                     .classes("w-20 h-14 text-2xl font-bold")
+                                     .classes("w-20 h-11 text-xl font-bold")
                                      .props("unelevated color=grey-8 text-color=white"))
 
                         # Control row
-                        with ui.row().classes("gap-2 w-full"):
+                        with ui.row().classes("gap-1 w-full"):
                             (ui.button("C", on_click=lambda: self.press("C"))
-                             .classes("w-20 h-12 text-xl font-bold")
+                             .classes("w-20 h-10 text-lg font-bold")
                              .props("unelevated color=deep-orange-9 text-color=white"))
                             (ui.button("±", on_click=lambda: self.press("±"))
-                             .classes("w-20 h-12 text-xl font-bold")
+                             .classes("w-20 h-10 text-lg font-bold")
                              .props("unelevated color=grey-8 text-color=white"))
                             self.mode_btn = (
                                 ui.button("ABS", on_click=self.toggle_mode)
-                                .classes("grow h-12 text-lg font-bold")
+                                .classes("grow h-10 text-base font-bold")
                                 .props("unelevated color=grey-7 text-color=white")
                             )
 
                         # GO button
                         (ui.button("GO", on_click=self.go)
-                         .classes("w-full h-16 text-4xl font-bold mt-1")
+                         .classes("w-full h-12 text-3xl font-bold")
                          .props("unelevated color=green-8 text-color=white"))
 
                     # ── Right column: history ──────────────────────────────
@@ -259,7 +259,7 @@ class FenceApp:
                         ui.label("History").classes(
                             "text-grey-5 text-xs uppercase tracking-widest mb-1"
                         )
-                        with ui.scroll_area().style("height: 380px").classes(
+                        with ui.scroll_area().style("height: 340px").classes(
                             "bg-grey-9 rounded w-full"
                         ):
                             self.history_col = ui.column().classes("w-full")
