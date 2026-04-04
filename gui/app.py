@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Table Saw Fence Controller — NiceGUI touchscreen app for Raspberry Pi."""
 
-from nicegui import ui
+from nicegui import app, ui
 import paho.mqtt.client as mqtt
 
 # ── Configuration ──────────────────────────────────────────────────────────────
@@ -205,6 +205,7 @@ class FenceApp:
             ui.space()
             self.pos_lbl = ui.label("0.00 mm").classes("text-white font-mono text-xl")
             self.state_lbl = ui.label("● disconnected").classes("text-red-5 text-sm")
+            ui.button(icon="close", on_click=app.shutdown).props("flat round dense text-color=grey-5")
 
         # Tabs (more tabs can be added here later)
         with ui.tabs().classes("w-full bg-grey-9") as tabs:
