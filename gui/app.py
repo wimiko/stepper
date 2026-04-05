@@ -58,18 +58,22 @@ def send_move(mm: float):
     steps = round(mm * STEPS_PER_MM)
     _mqtt.publish("stepper/command/position", str(steps))
 
+def send_reset_position():
+    _mqtt.publish("stepper/command/reset_position", "0")
+
 
 # ── App ────────────────────────────────────────────────────────────────────────
 class FenceApp:
     def __init__(self):
         self.entry: str = ""
         self.relative: bool = False
-        self.history: list[float] = []
+        self.history: list[float] = list(app.storage.general.get("history", []))
 
         # UI element references — assigned in build()
         self.display_lbl: ui.label
         self.mode_btn: ui.button
         self.history_col: ui.column
+        self._reset_dialog: ui.dialog
         self.pos_lbl: ui.label
         self.state_lbl: ui.label
         self._last_state_color: str = "text-red-5"
@@ -113,19 +117,19 @@ class FenceApp:
     # ── Movement ──────────────────────────────────────────────────────────────
 
     def go(self):
-        if not self.entry or self.entry in ("-", "."):
-            ui.notify("Enter a position first", type="warning", position="top")
+        if self.entry in ("-", "."):
+            ui.notify("Invalid value", type="warning", position="top")
             return
         try:
-            val = float(self.entry)
+            val = float(self.entry) if self.entry else 0.0
         except ValueError:
             ui.notify("Invalid value", type="negative", position="top")
             return
 
         target = round(motor.position_mm + val if self.relative else val, 2)
 
-        if target < 0:
-            ui.notify("Position cannot be negative", type="warning", position="top")
+        if target < -MAX_POS_MM:
+            ui.notify(f"Exceeds limit ({-MAX_POS_MM:.0f} mm)", type="warning", position="top")
             return
         if target > MAX_POS_MM:
             ui.notify(f"Exceeds limit ({MAX_POS_MM:.0f} mm)", type="warning", position="top")
@@ -140,20 +144,21 @@ class FenceApp:
     # ── History ───────────────────────────────────────────────────────────────
 
     def _add_history(self, pos: float):
-        if pos in self.history:
-            self.history.remove(pos)   # bubble existing entry to top
-        self.history.insert(0, pos)
+        if pos not in self.history:
+            self.history.append(pos)
+        self.history.sort()
+        app.storage.general["history"] = self.history
         self._rebuild_history()
 
     def _remove_history(self, pos: float):
         if pos in self.history:
             self.history.remove(pos)
+        app.storage.general["history"] = self.history
         self._rebuild_history()
 
     def _go_from_history(self, pos: float):
         send_move(pos)
         motor.position_mm = pos
-        self._add_history(pos)         # bubble to top
 
     def _rebuild_history(self):
         self.history_col.clear()
@@ -196,76 +201,93 @@ class FenceApp:
             self._last_state_color = new_color
         self.state_lbl.set_text(f"● {s}")
 
+    # ── Reset position ────────────────────────────────────────────────────────
+
+    def _confirm_reset(self):
+        self._reset_dialog.open()
+
+    def _do_reset(self):
+        send_reset_position()
+        motor.position_mm = 0.0
+        self._reset_dialog.close()
+
     # ── Build UI ──────────────────────────────────────────────────────────────
 
     def build(self):
+        # Confirmation dialog for position reset
+        with ui.dialog() as self._reset_dialog, ui.card().classes("bg-grey-9 text-white"):
+            ui.label("Reset position to 0?").classes("text-lg font-bold")
+            ui.label("This will not move the stepper.").classes("text-grey-4 text-sm")
+            with ui.row().classes("gap-2 w-full mt-2"):
+                (ui.button("Reset", on_click=self._do_reset)
+                 .classes("grow")
+                 .props("unelevated color=deep-orange-9 text-color=white"))
+                (ui.button("Cancel", on_click=self._reset_dialog.close)
+                 .classes("grow")
+                 .props("unelevated color=grey-7 text-color=white"))
+
         # Header
-        with ui.header().classes("bg-grey-10 items-center px-4 gap-6 min-h-0 py-2"):
-            ui.label("Fence Controller").classes("text-white font-bold text-xl")
+        with ui.header().classes("bg-grey-10 items-center px-4 gap-4 min-h-0 py-2"):
+            self.pos_lbl = ui.label("0.00 mm").classes("text-white font-mono text-2xl font-bold")
             ui.space()
-            self.pos_lbl = ui.label("0.00 mm").classes("text-white font-mono text-xl")
             self.state_lbl = ui.label("● disconnected").classes("text-red-5 text-sm")
             ui.button(icon="close", on_click=app.shutdown).props("flat round dense text-color=grey-5")
 
-        # Tabs (more tabs can be added here later)
+        # Tabs: Position | History
         with ui.tabs().classes("w-full bg-grey-9") as tabs:
-            tab_pos = ui.tab("Position", icon="straighten")
+            tab_pos  = ui.tab("Position", icon="straighten")
+            tab_hist = ui.tab("History",  icon="history")
 
         with ui.tab_panels(tabs, value=tab_pos).classes("w-full grow bg-grey-10"):
-            with ui.tab_panel(tab_pos).classes("p-2"):
-                with ui.row().classes("w-full gap-4 items-start"):
 
-                    # ── Left column: entry display + numpad ────────────────
-                    with ui.column().classes("gap-1 shrink-0"):
+            # ── Position tab ───────────────────────────────────────────────
+            with ui.tab_panel(tab_pos).classes("p-2 flex flex-col gap-2"):
 
-                        # Entry display
-                        with ui.row().classes(
-                            "items-baseline gap-1 bg-grey-9 rounded px-3 py-0 w-full"
-                        ):
-                            self.display_lbl = ui.label("0.00").classes(
-                                "font-mono text-4xl text-white grow text-right"
-                            )
-                            ui.label("mm").classes("text-grey-5 text-lg self-end mb-1")
+                # Entry display
+                with ui.row().classes("items-baseline gap-1 bg-grey-9 rounded px-3 py-1 w-full"):
+                    self.display_lbl = ui.label("0.00").classes(
+                        "font-mono text-5xl text-white grow text-right"
+                    )
+                    ui.label("mm").classes("text-grey-5 text-xl self-end mb-1")
 
-                        # Digit grid
-                        rows = [["7","8","9"],["4","5","6"],["1","2","3"],[".","0","←"]]
-                        for row_keys in rows:
-                            with ui.row().classes("gap-1"):
-                                for k in row_keys:
-                                    (ui.button(k, on_click=lambda _k=k: self.press(_k))
-                                     .classes("w-20 h-11 text-xl font-bold")
-                                     .props("unelevated color=grey-8 text-color=white"))
-
-                        # Control row
-                        with ui.row().classes("gap-1 w-full"):
-                            (ui.button("C", on_click=lambda: self.press("C"))
-                             .classes("w-20 h-10 text-lg font-bold")
-                             .props("unelevated color=deep-orange-9 text-color=white"))
-                            (ui.button("±", on_click=lambda: self.press("±"))
-                             .classes("w-20 h-10 text-lg font-bold")
+                # Digit grid — buttons grow to fill the row
+                for row_keys in [["7","8","9"],["4","5","6"],["1","2","3"],[".","0","←"]]:
+                    with ui.row().classes("gap-2 w-full"):
+                        for k in row_keys:
+                            (ui.button(k, on_click=lambda _k=k: self.press(_k))
+                             .classes("grow h-14 text-2xl font-bold")
                              .props("unelevated color=grey-8 text-color=white"))
-                            self.mode_btn = (
-                                ui.button("ABS", on_click=self.toggle_mode)
-                                .classes("grow h-10 text-base font-bold")
-                                .props("unelevated color=grey-7 text-color=white")
-                            )
 
-                        # GO button
-                        (ui.button("GO", on_click=self.go)
-                         .classes("w-full h-12 text-3xl font-bold")
-                         .props("unelevated color=green-8 text-color=white"))
+                # Control row
+                with ui.row().classes("gap-2 w-full"):
+                    (ui.button("C", on_click=lambda: self.press("C"))
+                     .classes("grow h-12 text-lg font-bold")
+                     .props("unelevated color=deep-orange-9 text-color=white"))
+                    (ui.button("±", on_click=lambda: self.press("±"))
+                     .classes("grow h-12 text-lg font-bold")
+                     .props("unelevated color=grey-8 text-color=white"))
+                    self.mode_btn = (
+                        ui.button("ABS", on_click=self.toggle_mode)
+                        .classes("grow h-12 text-lg font-bold")
+                        .props("unelevated color=grey-7 text-color=white")
+                    )
 
-                    # ── Right column: history ──────────────────────────────
-                    with ui.column().classes("grow min-w-0"):
-                        ui.label("History").classes(
-                            "text-grey-5 text-xs uppercase tracking-widest mb-1"
-                        )
-                        with ui.scroll_area().style("height: 340px").classes(
-                            "bg-grey-9 rounded w-full"
-                        ):
-                            self.history_col = ui.column().classes("w-full")
-                            with self.history_col:
-                                ui.label("No history yet").classes("text-grey-6 italic p-3")
+                # GO button
+                (ui.button("GO", on_click=self.go)
+                 .classes("w-full h-16 text-4xl font-bold")
+                 .props("unelevated color=green-8 text-color=white"))
+
+                # Reset position button
+                (ui.button("Reset position to 0", icon="restart_alt", on_click=self._confirm_reset)
+                 .classes("w-full h-10 text-sm")
+                 .props("unelevated color=grey-8 text-color=grey-4"))
+
+            # ── History tab ────────────────────────────────────────────────
+            with ui.tab_panel(tab_hist).classes("p-2"):
+                with ui.scroll_area().classes("w-full").style("height: calc(100vh - 120px)"):
+                    self.history_col = ui.column().classes("w-full")
+                    with self.history_col:
+                        ui.label("No history yet").classes("text-grey-6 italic p-3")
 
         ui.timer(0.5, self._refresh_status)
 
@@ -301,11 +323,9 @@ def main():
         title="Fence Controller",
         dark=True,
         reload=False,
-        native=True,
-        window_size=(800, 480),
-        fullscreen=True,
         host="0.0.0.0",
         port=8080,
+        storage_secret="fence-controller",
     )
 
 
