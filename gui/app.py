@@ -136,10 +136,17 @@ class FenceApp:
             return
 
         send_move(target)
-        motor.position_mm = target   # track position locally; MQTT feedback overwrites when it arrives
         self._add_history(target)
         self.entry = ""
         self._refresh_display()
+
+    def _nudge(self, delta_mm: float):
+        target = round(motor.position_mm + delta_mm, 2)
+        if target < -MAX_POS_MM or target > MAX_POS_MM:
+            ui.notify(f"Exceeds limit ({MAX_POS_MM:.0f} mm)", type="warning", position="top")
+            return
+        send_move(target)
+        motor.position_mm = target
 
     # ── History ───────────────────────────────────────────────────────────────
 
@@ -276,6 +283,13 @@ class FenceApp:
                 (ui.button("GO", on_click=self.go)
                  .classes("w-full h-16 text-4xl font-bold")
                  .props("unelevated color=green-8 text-color=white"))
+
+                # Nudge buttons
+                with ui.row().classes("gap-2 w-full"):
+                    for delta, label in [(-1, "-1"), (-0.1, "-0.1"), (0.1, "0.1"), (1, "1")]:
+                        (ui.button(f"{label} mm", on_click=lambda d=delta: self._nudge(d))
+                         .classes("grow h-11 text-base font-bold")
+                         .props("unelevated color=blue-grey-8 text-color=white"))
 
                 # Reset position button
                 (ui.button("Reset position to 0", icon="restart_alt", on_click=self._confirm_reset)
