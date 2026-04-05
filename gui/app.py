@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Table Saw Fence Controller — NiceGUI touchscreen app for Raspberry Pi."""
 
+import time
+
 from nicegui import app, ui
 import paho.mqtt.client as mqtt
 
@@ -14,6 +16,10 @@ MAX_POS_MM = 1200.0   # safety: refuse moves beyond this distance
 class MotorState:
     position_mm: float = 0.0
     state: str = "disconnected"
+    last_seen: float = 0.0
+
+    def driver_online(self) -> bool:
+        return time.monotonic() - self.last_seen < 2.0
 
 motor = MotorState()
 
@@ -34,6 +40,7 @@ def _on_disconnect(_client, _userdata, _rc):
 
 def _on_message(_client, _userdata, msg):
     payload = msg.payload.decode().strip()
+    motor.last_seen = time.monotonic()
     if msg.topic == "stepper/status/position":
         try:
             motor.position_mm = float(payload)
@@ -114,7 +121,15 @@ class FenceApp:
 
     # ── Movement ──────────────────────────────────────────────────────────────
 
+    def _require_driver(self) -> bool:
+        if not motor.driver_online():
+            ui.notify("Driver offline", type="negative", position="top")
+            return False
+        return True
+
     def go(self):
+        if not self._require_driver():
+            return
         if self.entry in ("-", "."):
             ui.notify("Invalid value", type="warning", position="top")
             return
@@ -139,6 +154,8 @@ class FenceApp:
         self._refresh_display()
 
     def _nudge(self, delta_mm: float):
+        if not self._require_driver():
+            return
         target = round(motor.position_mm + delta_mm, 2)
         if target < -MAX_POS_MM or target > MAX_POS_MM:
             ui.notify(f"Exceeds limit ({MAX_POS_MM:.0f} mm)", type="warning", position="top")
@@ -187,16 +204,17 @@ class FenceApp:
     # ── Status timer ──────────────────────────────────────────────────────────
 
     _STATE_COLOR = {
-        "idle":         "text-green-5",
-        "moving":       "text-yellow-5",
-        "homing":       "text-blue-4",
-        "disconnected": "text-red-5",
-        "error":        "text-red-5",
+        "idle":            "text-green-5",
+        "moving":          "text-yellow-5",
+        "homing":          "text-blue-4",
+        "disconnected":    "text-red-5",
+        "error":           "text-red-5",
+        "driver offline":  "text-red-5",
     }
 
     def _refresh_status(self):
         self.pos_lbl.set_text(f"{motor.position_mm:.2f} mm")
-        s = motor.state
+        s = motor.state if motor.driver_online() else "driver offline"
         new_color = self._STATE_COLOR.get(s, "text-grey-5")
         if new_color != self._last_state_color:
             self.state_lbl.classes(remove=self._last_state_color)
@@ -210,6 +228,9 @@ class FenceApp:
         self._reset_dialog.open()
 
     def _do_reset(self):
+        if not self._require_driver():
+            self._reset_dialog.close()
+            return
         send_reset_position()
         self._reset_dialog.close()
 
