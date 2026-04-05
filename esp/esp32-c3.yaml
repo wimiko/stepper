@@ -51,9 +51,9 @@ display:
     model: "SSD1306 72x40"
     address: 0x3C
     lambda: |-
-      it.printf(0, 0, id(font_small), "P:%d S:%d", id(stepper_position), id(stepper_speed));
-      it.printf(0, 12, id(font_small), "%s", id(stepper_state).c_str());
-      it.printf(0, 24, id(font_small), "%s", id(wifi_status).state ? "WiFi" : "No WiFi");
+      it.printf(0, 0, id(font_small), "%.1f mm", id(stepper_position) / 1600.0f);
+      it.printf(0, 14, id(font_small), "%s", id(wifi_status).state ? "WiFi OK" : "No WiFi");
+      it.printf(0, 28, id(font_small), "%s", id(mqtt_client)->is_connected() ? "MQTT OK" : "No MQTT");
 
 globals:
   - id: stepper_position
@@ -73,7 +73,7 @@ globals:
 font:
   - file: "fonts/arial.ttf"
     id: font_small
-    size: 10
+    size: 13
 
 # Text sensor for WiFi status
 text_sensor:
@@ -89,13 +89,14 @@ binary_sensor:
 
 # MQTT client configuration
 mqtt:
+  id: mqtt_client
   broker: !secret mqtt_broker
   port: 1883
   on_message:
     - topic: stepper/command/position
       then:
         - lambda: |-
-            id(stepper_position) = atoi(x.c_str());
+            id(stepper_position) = (int)(atof(x.c_str()) * 1600.0f);
             id(stepper_state) = "moving";
     - topic: stepper/command/speed
       then:
@@ -110,6 +111,20 @@ mqtt:
         - lambda: |-
             id(stepper_position) = 0;
             id(stepper_state) = "homing";
+    - topic: stepper/command/reset_position
+      then:
+        - lambda: |-
+            id(stepper_position) = 0;
+
+interval:
+  - interval: 500ms
+    then:
+      - mqtt.publish:
+          topic: stepper/status/position
+          payload: !lambda 'return to_string(id(stepper_position) / 1600.0f);'
+      - mqtt.publish:
+          topic: stepper/status/state
+          payload: !lambda 'return id(stepper_state);'
 
 # TMC2209 Stepper configuration (to be configured based on wiring)
 # Uncomment and configure once hardware is connected

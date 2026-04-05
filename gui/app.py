@@ -7,8 +7,7 @@ import paho.mqtt.client as mqtt
 # ── Configuration ──────────────────────────────────────────────────────────────
 MQTT_BROKER  = "stepperpi.local"
 MQTT_PORT    = 1883
-STEPS_PER_MM = 1600.0   # 200 steps/rev × 16 microsteps ÷ 2 mm/rev lead screw
-MAX_POS_MM   = 1200.0   # safety: refuse moves beyond this distance
+MAX_POS_MM = 1200.0   # safety: refuse moves beyond this distance
 
 
 # ── Motor state (written by MQTT thread, read by UI timer) ────────────────────
@@ -37,7 +36,7 @@ def _on_message(_client, _userdata, msg):
     payload = msg.payload.decode().strip()
     if msg.topic == "stepper/status/position":
         try:
-            motor.position_mm = int(payload) / STEPS_PER_MM
+            motor.position_mm = float(payload)
         except ValueError:
             pass
     elif msg.topic == "stepper/status/state":
@@ -55,8 +54,7 @@ def start_mqtt():
         print(f"MQTT connection error: {e}")
 
 def send_move(mm: float):
-    steps = round(mm * STEPS_PER_MM)
-    _mqtt.publish("stepper/command/position", str(steps))
+    _mqtt.publish("stepper/command/position", f"{mm:.4f}")
 
 def send_reset_position():
     _mqtt.publish("stepper/command/reset_position", "0")
@@ -146,7 +144,6 @@ class FenceApp:
             ui.notify(f"Exceeds limit ({MAX_POS_MM:.0f} mm)", type="warning", position="top")
             return
         send_move(target)
-        motor.position_mm = target
 
     # ── History ───────────────────────────────────────────────────────────────
 
@@ -165,7 +162,6 @@ class FenceApp:
 
     def _go_from_history(self, pos: float):
         send_move(pos)
-        motor.position_mm = pos
 
     def _rebuild_history(self):
         self.history_col.clear()
@@ -215,7 +211,6 @@ class FenceApp:
 
     def _do_reset(self):
         send_reset_position()
-        motor.position_mm = 0.0
         self._reset_dialog.close()
 
     # ── Build UI ──────────────────────────────────────────────────────────────
