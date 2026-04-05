@@ -51,16 +51,23 @@ display:
     model: "SSD1306 72x40"
     address: 0x3C
     lambda: |-
-      it.printf(0, 0, id(font_small), "Stepper");
-      it.printf(0, 12, id(font_small), "%s", id(display_text).c_str());
+      it.printf(0, 0, id(font_small), "P:%d S:%d", id(stepper_position), id(stepper_speed));
+      it.printf(0, 12, id(font_small), "%s", id(stepper_state).c_str());
       it.printf(0, 24, id(font_small), "%s", id(wifi_status).state ? "WiFi" : "No WiFi");
 
-# Global variable to hold the MQTT display message
 globals:
-  - id: display_text
+  - id: stepper_position
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: stepper_speed
+    type: int
+    restore_value: no
+    initial_value: '250'
+  - id: stepper_state
     type: std::string
     restore_value: no
-    initial_value: '""'
+    initial_value: '"idle"'
 
 # Font for small display
 font:
@@ -85,10 +92,24 @@ mqtt:
   broker: !secret mqtt_broker
   port: 1883
   on_message:
-    - topic: stepper/display
+    - topic: stepper/command/position
       then:
         - lambda: |-
-            id(display_text) = x;
+            id(stepper_position) = atoi(x.c_str());
+            id(stepper_state) = "moving";
+    - topic: stepper/command/speed
+      then:
+        - lambda: |-
+            id(stepper_speed) = atoi(x.c_str());
+    - topic: stepper/command/stop
+      then:
+        - lambda: |-
+            id(stepper_state) = "stopped";
+    - topic: stepper/command/home
+      then:
+        - lambda: |-
+            id(stepper_position) = 0;
+            id(stepper_state) = "homing";
 
 # TMC2209 Stepper configuration (to be configured based on wiring)
 # Uncomment and configure once hardware is connected
