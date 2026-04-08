@@ -67,6 +67,130 @@ def send_reset_position():
     _mqtt.publish("stepper/command/reset_position", "0")
 
 
+# ── Box joint logic ────────────────────────────────────────────────────────────
+class BoxJoint:
+    """Tracks cut sequence for a box joint operation.
+
+    Piece A cuts: positions 0, step_a, 2*step_a, ...   step_a = pin_a + kerf
+    Piece B cuts: positions pin_a, pin_a+step_b, ...   step_b = pin_b + kerf
+    """
+
+    def __init__(self):
+        s = app.storage.general.get("boxjoint", {})
+        self.kerf:  float = s.get("kerf",  3.0)
+        self.pin_a: float = s.get("pin_a", 10.0)
+        self.pin_b: float = s.get("pin_b", 10.0)
+        self.piece: str   = "A"
+        self.cut_index: int = 0
+
+        self._cut_lbl: ui.label
+        self._pos_lbl: ui.label
+        self._piece_a_btn: ui.button
+        self._piece_b_btn: ui.button
+
+    def _save(self):
+        app.storage.general["boxjoint"] = {
+            "kerf": self.kerf, "pin_a": self.pin_a, "pin_b": self.pin_b
+        }
+
+    def _step(self) -> float:
+        return (self.pin_a if self.piece == "A" else self.pin_b) + self.kerf
+
+    def _offset(self) -> float:
+        return 0.0 if self.piece == "A" else self.pin_a
+
+    def current_position(self) -> float:
+        return round(self._offset() + self.cut_index * self._step(), 4)
+
+    def _refresh(self):
+        self._cut_lbl.set_text(f"Cut {self.cut_index + 1}  —  piece {self.piece}")
+        self._pos_lbl.set_text(f"{self.current_position():.2f} mm")
+
+    def _require_driver(self) -> bool:
+        if not motor.driver_online():
+            ui.notify("Driver offline", type="negative", position="top")
+            return False
+        return True
+
+    def go_home(self):
+        if not self._require_driver():
+            return
+        self.cut_index = 0
+        send_move(self.current_position())
+        self._refresh()
+
+    def advance(self):
+        if not self._require_driver():
+            return
+        self.cut_index += 1
+        send_move(self.current_position())
+        self._refresh()
+
+    def select_piece(self, piece: str):
+        self.piece = piece
+        self.cut_index = 0
+        self._refresh()
+        if piece == "A":
+            self._piece_a_btn.props("color=blue-8")
+            self._piece_b_btn.props("color=grey-8")
+        else:
+            self._piece_a_btn.props("color=grey-8")
+            self._piece_b_btn.props("color=blue-8")
+
+    def build_tab(self):
+        with ui.column().classes("w-full gap-3 p-2"):
+
+            # ── Settings ──────────────────────────────────────────────────
+            ui.label("Settings").classes("text-grey-5 text-xs uppercase tracking-widest")
+            with ui.grid(columns=3).classes("w-full gap-2"):
+                for label, attr in [("Kerf", "kerf"), ("Pin A", "pin_a"), ("Pin B", "pin_b")]:
+                    with ui.column().classes("gap-0"):
+                        ui.label(label).classes("text-grey-5 text-xs")
+                        def _make_input(a=attr):
+                            inp = (ui.number(value=getattr(self, a), format="%.2f",
+                                             min=0.1, max=50, step=0.1)
+                                   .classes("w-full bg-grey-9 rounded")
+                                   .props("dense outlined dark suffix=mm"))
+                            def _update(e, _a=a):
+                                setattr(self, _a, e.value)
+                                self._save()
+                                self._refresh()
+                            inp.on("update:model-value", _update)
+                        _make_input()
+
+            # ── Piece selector ────────────────────────────────────────────
+            ui.label("Piece").classes("text-grey-5 text-xs uppercase tracking-widest")
+            with ui.row().classes("gap-2 w-full"):
+                self._piece_a_btn = (
+                    ui.button("Piece A", on_click=lambda: self.select_piece("A"))
+                    .classes("grow h-12 text-lg font-bold")
+                    .props("unelevated color=blue-8 text-color=white")
+                )
+                self._piece_b_btn = (
+                    ui.button("Piece B", on_click=lambda: self.select_piece("B"))
+                    .classes("grow h-12 text-lg font-bold")
+                    .props("unelevated color=grey-8 text-color=white")
+                )
+
+            # ── Current cut display ───────────────────────────────────────
+            with ui.column().classes("w-full bg-grey-9 rounded px-4 py-3 gap-0"):
+                self._cut_lbl = ui.label("Cut 1  —  piece A").classes(
+                    "text-grey-5 text-sm"
+                )
+                self._pos_lbl = ui.label("0.00 mm").classes(
+                    "font-mono text-5xl text-white font-bold"
+                )
+
+            # ── Home / Advance buttons ────────────────────────────────────
+            with ui.row().classes("gap-2 w-full"):
+                (ui.button(icon="home", on_click=self.go_home)
+                 .classes("grow h-16 text-2xl font-bold")
+                 .props("unelevated color=grey-7 text-color=white"))
+                (ui.button("ADVANCE", icon="arrow_forward", on_click=self.advance)
+                 .classes("grow h-16 text-2xl font-bold")
+                 .props("unelevated color=green-8 text-color=white"))
+
+
 # ── App ────────────────────────────────────────────────────────────────────────
 class FenceApp:
     def __init__(self):
@@ -256,10 +380,11 @@ class FenceApp:
             self.state_lbl = ui.label("● disconnected").classes("text-red-5 text-sm")
             ui.button(icon="close", on_click=app.shutdown).props("flat round dense text-color=grey-5")
 
-        # Tabs: Position | History
+        # Tabs: Position | Box Joint | History
         with ui.tabs().classes("w-full bg-grey-9") as tabs:
-            tab_pos  = ui.tab("Position", icon="straighten")
-            tab_hist = ui.tab("History",  icon="history")
+            tab_pos  = ui.tab("Position",  icon="straighten")
+            tab_bj   = ui.tab("Box Joint", icon="grid_on")
+            tab_hist = ui.tab("History",   icon="history")
 
         with ui.tab_panels(tabs, value=tab_pos).classes("w-full grow bg-grey-10"):
 
@@ -311,6 +436,10 @@ class FenceApp:
                 (ui.button("Reset position to 0", icon="restart_alt", on_click=self._confirm_reset)
                  .classes("w-full h-10 text-sm")
                  .props("unelevated color=grey-8 text-color=grey-4"))
+
+            # ── Box joint tab ──────────────────────────────────────────────
+            with ui.tab_panel(tab_bj).classes("p-0"):
+                BoxJoint().build_tab()
 
             # ── History tab ────────────────────────────────────────────────
             with ui.tab_panel(tab_hist).classes("p-2"):
