@@ -43,7 +43,7 @@
   <text x="176" y="258" text-anchor="end" font-size="9" fill="#c00">3.3V</text>
   <text x="176" y="313" text-anchor="end" font-size="9" fill="#36c">RX GPIO20</text>
   <text x="176" y="333" text-anchor="end" font-size="9" fill="#36c">TX GPIO21</text>
-  <text x="176" y="368" text-anchor="end" font-size="9" fill="#090">STEP GPIO2</text>
+  <text x="176" y="368" text-anchor="end" font-size="9" fill="#090">STEP GPIO4</text>
   <text x="176" y="396" text-anchor="end" font-size="9" fill="#090">DIR  GPIO3</text>
   <text x="100" y="443" text-anchor="middle" font-size="9" fill="#444">GND</text>
 
@@ -133,7 +133,7 @@
   <circle cx="330" cy="330" r="4" fill="#36c"/>
   <circle cx="298" cy="330" r="3.5" fill="#36c"/>
 
-  <!-- STEP: GPIO2 (180,370) → TMC STEP (330,370) -->
+  <!-- STEP: GPIO4 (180,370) → TMC STEP (330,370) -->
   <line x1="180" y1="370" x2="330" y2="370" stroke="#090" stroke-width="1.5"/>
 
   <!-- DIR: GPIO3 (180,398) → TMC DIR (330,398) -->

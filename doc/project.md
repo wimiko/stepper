@@ -60,9 +60,15 @@ After a successful first flash, subsequent OTA updates work over WiFi.
 - Board identifier: `esp32-c3-devkitm-1`
 - Framework: `arduino`
 
+### Board Drawing
+
+![ESP32-C3 ABRobot Pinout](https://raw.githubusercontent.com/zhuhai-esp/ESP32-C3-ABrobot-OLED/main/Document/引脚图.png)
+
 ### Resources
 - Blog with detailed setup: [emalliab.wordpress.com — ESP32-C3 0.42 OLED](https://emalliab.wordpress.com/2025/02/12/esp32-c3-0-42-oled/)
-- Schematic: [github.com/zhuhai-esp/ESP32-C3-ABrobot-OLED](https://github.com/zhuhai-esp/ESP32-C3-ABrobot-OLED)
+- GitHub repo + schematic PDF: [github.com/zhuhai-esp/ESP32-C3-ABrobot-OLED](https://github.com/zhuhai-esp/ESP32-C3-ABrobot-OLED)
+- Pinout image: [引脚图.png](https://github.com/zhuhai-esp/ESP32-C3-ABrobot-OLED/blob/main/Document/引脚图.png)
+- Schematic PDF: [ESP32C3 OLED原理图.pdf](https://github.com/zhuhai-esp/ESP32-C3-ABrobot-OLED/blob/main/Document/ESP32C3%20OLED%E5%8E%9F%E7%90%86%E5%9B%BE.pdf)
 - Fritzing part: [Fritzing forum](https://forum.fritzing.org/t/esp32-c3-oled-0-42-mini-board-part/25830)
 
 ---
@@ -74,6 +80,8 @@ After a successful first flash, subsequent OTA updates work over WiFi.
 |-----------|-------------|-------|
 | [Wemos S2 Mini V1.0.0](https://www.wemos.cc/en/latest/s2/s2_mini.html) | Main microcontroller | ESP32-S2FN4R2, 240MHz, 4MB flash, 2MB PSRAM, USB-C, 3.3V logic — [schematic](https://www.wemos.cc/en/latest/_static/files/sch_s2_mini_v1.0.0.pdf) · [pinout](https://www.studiopieters.nl/s2-mini-pinout/) |
 | [BigTreeTech TMC2209 V1.3](https://github.com/bigtreetech/BIGTREETECH-Stepper-Motor-Driver/tree/master/TMC2209/V1.3) | Stepper motor driver module | 2A RMS / 2.8A peak, 4.75–28V VM, StealthChop2 — [manual](https://github.com/bigtreetech/BIGTREETECH-Stepper-Motor-Driver/blob/master/TMC2209/V1.3/manual/BIGTREETECH%20TMC2209%20V1.3%20User%20Manual.pdf) · [datasheet](https://www.analog.com/media/en/technical-documentation/data-sheets/tmc2209_datasheet_rev1.09.pdf) · [pinout](https://learn.watterott.com/silentstepstick/pinconfig/tmc2209/) |
+
+![TMC2209 V1.3 Pinout](https://raw.githubusercontent.com/bigtreetech/BIGTREETECH-Stepper-Motor-Driver/master/TMC2209/V1.3/Schematic/TMC2209-V1.3-Pin.jpg)
 | Stepper Motor | NEMA 17 (recommended) | e.g. 1.7A, 1.8°/step, 200 steps/rev |
 
 ### Power
