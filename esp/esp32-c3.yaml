@@ -4,6 +4,21 @@
 esphome:
   name: esp32-c3-stepper
   friendly_name: ESP32-C3 Stepper Controller
+  on_boot:
+    - tmc2209.configure:
+        id: my_stepper
+        microsteps: 16
+        interpolation: true
+        enable_spreadcycle: false
+    - tmc2209.currents:
+        id: my_stepper
+        run_current: 0.8
+        hold_current: 0.4
+        standstill_mode: normal
+
+external_components:
+  - source: github://slimcdk/esphome-custom-components
+    components: [tmc2209_hub, tmc2209, stepper]
 
 esp32:
   board: esp32-c3-devkitm-1
@@ -12,7 +27,8 @@ esp32:
 
 # Enable logging
 logger:
-  level: DEBUG
+  level: INFO
+  hardware_uart: USB_SERIAL_JTAG
 
 # Enable Home Assistant API (optional, can be disabled if using MQTT only)
 #api:
@@ -51,19 +67,16 @@ display:
     model: "SSD1306 72x40"
     address: 0x3C
     lambda: |-
-      it.printf(0, 0, id(font_small), "%.1f mm", id(stepper_position) / 1600.0f);
-      it.printf(0, 14, id(font_small), "%s", id(wifi_status).state ? "WiFi OK" : "No WiFi");
-      it.printf(0, 28, id(font_small), "%s", id(mqtt_client)->is_connected() ? "MQTT OK" : "No MQTT");
+      it.printf(0, 0, id(font_small), "%.1f mm %s", id(my_stepper).current_position / 1600.0f, id(stepper_state).c_str());
+      it.printf(0, 14, id(font_small), "%s %s",
+        id(wifi_status).state ? "W+" : "W-",
+        id(mqtt_client)->is_connected() ? "M+" : "M-");
+      if (isnan(id(tmc_tstep).state))
+        it.printf(0, 28, id(font_small), "TMC: ---");
+      else
+        it.printf(0, 28, id(font_small), "TMC: %.0f", id(tmc_tstep).state);
 
 globals:
-  - id: stepper_position
-    type: int
-    restore_value: no
-    initial_value: '0'
-  - id: stepper_speed
-    type: int
-    restore_value: no
-    initial_value: '250'
   - id: stepper_state
     type: std::string
     restore_value: no
@@ -74,6 +87,13 @@ font:
   - file: "fonts/arial.ttf"
     id: font_small
     size: 13
+
+sensor:
+  - platform: tmc2209
+    id: tmc_tstep
+    type: actual_current
+    name: "TMC2209 Current"
+    update_interval: 2s
 
 # Text sensor for WiFi status
 text_sensor:
@@ -96,54 +116,60 @@ mqtt:
     - topic: stepper/command/position
       then:
         - lambda: |-
-            id(stepper_position) = (int)(atof(x.c_str()) * 1600.0f);
+            int steps = (int)(atof(x.c_str()) * 1600.0f);
+            id(my_stepper).set_target(steps);
             id(stepper_state) = "moving";
     - topic: stepper/command/speed
       then:
         - lambda: |-
-            id(stepper_speed) = atoi(x.c_str());
+            id(my_stepper).set_max_speed(atof(x.c_str()));
     - topic: stepper/command/stop
       then:
         - lambda: |-
+            id(my_stepper).set_target(id(my_stepper).current_position);
             id(stepper_state) = "stopped";
     - topic: stepper/command/home
       then:
         - lambda: |-
-            id(stepper_position) = 0;
+            id(my_stepper).set_target(0);
             id(stepper_state) = "homing";
     - topic: stepper/command/reset_position
       then:
         - lambda: |-
-            id(stepper_position) = 0;
+            id(my_stepper).report_position(0);
 
 interval:
   - interval: 500ms
     then:
+      - lambda: |-
+          if (id(my_stepper).current_position == id(my_stepper).target_position)
+            id(stepper_state) = "idle";
       - mqtt.publish:
           topic: stepper/status/position
-          payload: !lambda 'return to_string(id(stepper_position) / 1600.0f);'
+          payload: !lambda 'return to_string(id(my_stepper).current_position / 1600.0f);'
       - mqtt.publish:
           topic: stepper/status/state
           payload: !lambda 'return id(stepper_state);'
 
-# TMC2209 Stepper configuration (to be configured based on wiring)
-# Uncomment and configure once hardware is connected
-# uart:
-#   id: uart_bus
-#   tx_pin: GPIO20
-#   rx_pin: GPIO21
-#   baud_rate: 115200
+uart:
+  id: uart_bus
+  tx_pin: GPIO21
+  rx_pin: GPIO20
+  baud_rate: 500000
 
-# stepper:
-#   - platform: tmc2209
-#     id: my_stepper
-#     uart_id: uart_bus
-#     step_pin: GPIO2
-#     dir_pin: GPIO3
-#     max_speed: 250 steps/s
-#     acceleration: 100 steps/s^2
-#     deceleration: 100 steps/s^2
-#     microsteps: 16
-#     run_current: 800mA
-#     hold_current: 500mA
-#     sense_resistor: 110 mOhm
+tmc2209_hub:
+  id: tmc_hub
+  uart_id: uart_bus
+
+stepper:
+  - platform: tmc2209
+    id: my_stepper
+    tmc2209_hub_id: tmc_hub
+    address: 0
+    step_pin: GPIO4
+    dir_pin: GPIO3
+    rsense: 0.11
+    max_speed: 250 steps/s
+    acceleration: 100 steps/s^2
+    deceleration: 100 steps/s^2
+
