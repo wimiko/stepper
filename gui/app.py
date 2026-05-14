@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Table Saw Fence Controller — NiceGUI touchscreen app for Raspberry Pi."""
 
+import argparse
 import time
 
 from nicegui import app, ui
 import paho.mqtt.client as mqtt
+
+DEMO_MODE: bool = False
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 MQTT_BROKER  = "stepperpi.local"
@@ -19,6 +22,8 @@ class MotorState:
     last_seen: float = 0.0
 
     def driver_online(self) -> bool:
+        if DEMO_MODE:
+            return True
         return time.monotonic() - self.last_seen < 2.0
 
 motor = MotorState()
@@ -54,6 +59,9 @@ _mqtt.on_disconnect = _on_disconnect
 _mqtt.on_message    = _on_message
 
 def start_mqtt():
+    if DEMO_MODE:
+        motor.state = "idle"
+        return
     try:
         _mqtt.connect(MQTT_BROKER, MQTT_PORT, keepalive=60)
         _mqtt.loop_start()
@@ -61,10 +69,16 @@ def start_mqtt():
         print(f"MQTT connection error: {e}")
 
 def send_move(mm: float):
-    _mqtt.publish("stepper/command/position", f"{mm:.4f}")
+    if DEMO_MODE:
+        motor.position_mm = mm
+    else:
+        _mqtt.publish("stepper/command/position", f"{mm:.4f}")
 
 def send_reset_position():
-    _mqtt.publish("stepper/command/reset_position", "0")
+    if DEMO_MODE:
+        motor.position_mm = 0.0
+    else:
+        _mqtt.publish("stepper/command/reset_position", "0")
 
 
 # ── Box joint logic ────────────────────────────────────────────────────────────
@@ -147,15 +161,14 @@ class BoxJoint:
                     with ui.column().classes("gap-0"):
                         ui.label(label).classes("text-grey-5 text-xs")
                         def _make_input(a=attr):
-                            inp = (ui.number(value=getattr(self, a), format="%.2f",
-                                             min=0.1, max=50, step=0.1)
-                                   .classes("w-full bg-grey-9 rounded")
-                                   .props("dense outlined dark suffix=mm"))
                             def _update(e, _a=a):
                                 setattr(self, _a, e.value)
                                 self._save()
                                 self._refresh()
-                            inp.on("update:model-value", _update)
+                            (ui.number(value=getattr(self, a), format="%.2f",
+                                       min=0.1, max=50, step=0.1, on_change=_update)
+                             .classes("w-full bg-grey-9 rounded")
+                             .props("dense outlined dark suffix=mm"))
                         _make_input()
 
             # ── Piece selector ────────────────────────────────────────────
@@ -186,6 +199,146 @@ class BoxJoint:
                 (ui.button(icon="home", on_click=self.go_home)
                  .classes("grow h-16 text-2xl font-bold")
                  .props("unelevated color=grey-7 text-color=white"))
+                (ui.button("ADVANCE", icon="arrow_forward", on_click=self.advance)
+                 .classes("grow h-16 text-2xl font-bold")
+                 .props("unelevated color=green-8 text-color=white"))
+
+
+# ── Finger joint logic ─────────────────────────────────────────────────────────
+class FingerJoint:
+    """Advances by 2 × kerf per step, forward or back."""
+
+    def __init__(self):
+        s = app.storage.general.get("fingerjoint", {})
+        self.kerf: float = s.get("kerf", 3.0)
+        self.cut_index: int = s.get("cut_index", 0)
+        self.forward: bool = s.get("forward", True)
+        self.offset: bool = s.get("offset", False)
+        self._cut_lbl: ui.label
+        self._pos_lbl: ui.label
+        self._dir_btn: ui.button
+        self._reset_dialog: ui.dialog
+
+    def _save(self):
+        app.storage.general["fingerjoint"] = {
+            "kerf": self.kerf,
+            "cut_index": self.cut_index,
+            "forward": self.forward,
+            "offset": self.offset,
+        }
+
+    def current_position(self) -> float:
+        off = self.kerf if self.offset else 0.0
+        return round(self.cut_index * 2.0 * self.kerf + off, 4)
+
+    def _refresh(self):
+        self._cut_lbl.set_text(f"Cut {self.cut_index + 1}")
+        self._pos_lbl.set_text(f"{self.current_position():.2f} mm")
+
+    def _require_driver(self) -> bool:
+        if not motor.driver_online():
+            ui.notify("Driver offline", type="negative", position="top")
+            return False
+        return True
+
+    def _do_advance(self):
+        if self.forward:
+            self.cut_index += 1
+        else:
+            self.cut_index = max(0, self.cut_index - 1)
+        self._save()
+        send_move(self.current_position())
+        self._refresh()
+
+    def advance(self):
+        if not self._require_driver():
+            return
+        if self.cut_index == 0 and abs(motor.position_mm) > 0.01:
+            self._reset_dialog.open()
+            return
+        self._do_advance()
+
+    def _reset_and_advance(self):
+        send_reset_position()
+        self._reset_dialog.close()
+        self._do_advance()
+
+    def _skip_and_advance(self):
+        self._reset_dialog.close()
+        self._do_advance()
+
+    def go_home(self):
+        if not self._require_driver():
+            return
+        self.cut_index = 0
+        self._save()
+        send_move(self.current_position())
+        self._refresh()
+
+    def toggle_direction(self):
+        self.forward = not self.forward
+        self._save()
+        if self.forward:
+            self._dir_btn.set_text("FWD")
+            self._dir_btn.props("color=grey-7")
+        else:
+            self._dir_btn.set_text("BACK")
+            self._dir_btn.props("color=orange-8")
+
+    def set_offset(self, value: bool):
+        self.offset = value
+        self._save()
+        if self._require_driver():
+            send_move(self.current_position())
+        self._refresh()
+
+    def build_tab(self):
+        with ui.dialog() as self._reset_dialog, ui.card().classes("bg-grey-9 text-white"):
+            ui.label("Motor is not at position 0").classes("text-lg font-bold")
+            ui.label("Reset position counter before starting?").classes("text-grey-4 text-sm")
+            ui.label("This will not move the stepper.").classes("text-grey-5 text-xs")
+            with ui.row().classes("gap-2 w-full mt-2"):
+                (ui.button("Reset & Advance", on_click=self._reset_and_advance)
+                 .classes("grow")
+                 .props("unelevated color=deep-orange-9 text-color=white"))
+                (ui.button("Just Advance", on_click=self._skip_and_advance)
+                 .classes("grow")
+                 .props("unelevated color=grey-7 text-color=white"))
+
+        with ui.column().classes("w-full gap-3 p-2"):
+            ui.label("Settings").classes("text-grey-5 text-xs uppercase tracking-widest")
+            with ui.row().classes("w-full gap-4 items-end"):
+                with ui.column().classes("gap-0"):
+                    ui.label("Kerf").classes("text-grey-5 text-xs")
+                    def _on_kerf_change(e):
+                        self.kerf = e.value
+                        self._save()
+                        self._refresh()
+                    (ui.number(value=self.kerf, format="%.2f", min=0.1, max=50, step=0.05,
+                               on_change=_on_kerf_change)
+                     .classes("bg-grey-9 rounded")
+                     .props("dense outlined dark suffix=mm"))
+                (ui.switch("Offset", value=self.offset,
+                           on_change=lambda e: self.set_offset(e.value))
+                 .classes("text-grey-4 text-sm"))
+
+            with ui.column().classes("w-full bg-grey-9 rounded px-4 py-3 gap-0"):
+                self._cut_lbl = ui.label(f"Cut {self.cut_index + 1}").classes("text-grey-5 text-sm")
+                self._pos_lbl = ui.label(f"{self.current_position():.2f} mm").classes(
+                    "font-mono text-5xl text-white font-bold"
+                )
+
+            with ui.row().classes("gap-2 w-full"):
+                (ui.button(icon="home", on_click=self.go_home)
+                 .classes("grow h-16 text-2xl font-bold")
+                 .props("unelevated color=grey-7 text-color=white"))
+                dir_label = "FWD" if self.forward else "BACK"
+                dir_color = "grey-7" if self.forward else "orange-8"
+                self._dir_btn = (
+                    ui.button(dir_label, on_click=self.toggle_direction)
+                    .classes("grow h-16 text-2xl font-bold")
+                    .props(f"unelevated color={dir_color} text-color=white")
+                )
                 (ui.button("ADVANCE", icon="arrow_forward", on_click=self.advance)
                  .classes("grow h-16 text-2xl font-bold")
                  .props("unelevated color=green-8 text-color=white"))
@@ -378,13 +531,16 @@ class FenceApp:
             self.pos_lbl = ui.label("0.00 mm").classes("text-white font-mono text-2xl font-bold")
             ui.space()
             self.state_lbl = ui.label("● disconnected").classes("text-red-5 text-sm")
+            if DEMO_MODE:
+                ui.badge("DEMO", color="orange").classes("text-xs")
             ui.button(icon="close", on_click=app.shutdown).props("flat round dense text-color=grey-5")
 
-        # Tabs: Position | Box Joint | History
+        # Tabs: Position | Box Joint | Finger Joint | History
         with ui.tabs().classes("w-full bg-grey-9") as tabs:
-            tab_pos  = ui.tab("Position",  icon="straighten")
-            tab_bj   = ui.tab("Box Joint", icon="grid_on")
-            tab_hist = ui.tab("History",   icon="history")
+            tab_pos  = ui.tab("Position",     icon="straighten")
+            tab_bj   = ui.tab("Box Joint",    icon="grid_on")
+            tab_fj   = ui.tab("Finger Joint", icon="view_column")
+            tab_hist = ui.tab("History",      icon="history")
 
         with ui.tab_panels(tabs, value=tab_pos).classes("w-full grow bg-grey-10"):
 
@@ -441,6 +597,10 @@ class FenceApp:
             with ui.tab_panel(tab_bj).classes("p-0"):
                 BoxJoint().build_tab()
 
+            # ── Finger joint tab ───────────────────────────────────────────
+            with ui.tab_panel(tab_fj).classes("p-0"):
+                FingerJoint().build_tab()
+
             # ── History tab ────────────────────────────────────────────────
             with ui.tab_panel(tab_hist).classes("p-2"):
                 with ui.scroll_area().classes("w-full").style("height: calc(100vh - 120px)"):
@@ -453,6 +613,12 @@ class FenceApp:
 
 # ── Entry point ────────────────────────────────────────────────────────────────
 def main():
+    global DEMO_MODE
+    parser = argparse.ArgumentParser(description="Fence Controller")
+    parser.add_argument("--demo", action="store_true", help="Demo mode — no stepper required")
+    args, _ = parser.parse_known_args()
+    DEMO_MODE = args.demo
+
     start_mqtt()
     FenceApp().build()
 
