@@ -149,6 +149,7 @@ mqtt:
       then:
         - lambda: |-
             id(my_stepper).report_position(0);
+            id(my_stepper).set_target(0);
 
 interval:
   - interval: 500ms
