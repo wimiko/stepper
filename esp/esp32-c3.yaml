@@ -127,7 +127,7 @@ mqtt:
     - topic: stepper/command/position
       then:
         - lambda: |-
-            int steps = (int)(atof(x.c_str()) * 800.0f);
+            int steps = (int)round(atof(x.c_str()) * 800.0);
             ESP_LOGI("stepper", "Moving to %d steps (%.1f mm)", steps, atof(x.c_str()));
             id(my_stepper).set_target(steps);
             id(stepper_state) = "moving";
