@@ -11,12 +11,15 @@ esphome:
           id: my_stepper
           microsteps: 8
           interpolation: true
-          enable_spreadcycle: false
+          enable_spreadcycle: true
+          tcool_threshold: 1048575  # enable StallGuard at all speeds
       - tmc2209.currents:
           id: my_stepper
           run_current: 1.4  # 93% of rated 1.5A
           hold_current: 0.5
-          standstill_mode: normal
+      - tmc2209.stallguard:
+          id: my_stepper
+          threshold: 50  # tune: raise if false triggers, lower if stalls go undetected
 
 external_components:
   - source: github://slimcdk/esphome-custom-components
@@ -105,6 +108,11 @@ sensor:
     type: actual_current
     name: "TMC2209 Current"
     update_interval: 2s
+  - platform: tmc2209
+    id: tmc_motor_load
+    type: motor_load
+    name: "Motor Load"
+    update_interval: 500ms
 
 # Text sensor for WiFi status
 text_sensor:
@@ -187,4 +195,11 @@ stepper:
     max_speed: 8000 steps/s
     acceleration: 4000 steps/s^2
     deceleration: 4000 steps/s^2
+    on_stall:
+      - lambda: |-
+          id(my_stepper).set_target(id(my_stepper).current_position);
+          id(stepper_state) = "stalled";
+      - mqtt.publish:
+          topic: stepper/status/state
+          payload: "stalled"
 

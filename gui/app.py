@@ -359,6 +359,7 @@ class FenceApp:
         self.pos_lbl: ui.label
         self.state_lbl: ui.label
         self._last_state_color: str = "text-red-5"
+        self._last_state: str = ""
 
     # ── Numpad ────────────────────────────────────────────────────────────────
 
@@ -484,6 +485,7 @@ class FenceApp:
         "idle":            "text-green-5",
         "moving":          "text-yellow-5",
         "homing":          "text-blue-4",
+        "stalled":         "text-red-5",
         "disconnected":    "text-red-5",
         "error":           "text-red-5",
         "driver offline":  "text-red-5",
@@ -497,6 +499,10 @@ class FenceApp:
             self.state_lbl.classes(remove=self._last_state_color)
             self.state_lbl.classes(add=new_color)
             self._last_state_color = new_color
+        if s == "stalled" and self._last_state != "stalled":
+            ui.notify("Motor stalled — position lost", type="negative",
+                      position="top", timeout=0, close_button=True)
+        self._last_state = s
         self.state_lbl.set_text(f"● {s}")
 
     # ── Reset position ────────────────────────────────────────────────────────
